@@ -1,0 +1,55 @@
+#! /bin/bash
+
+set -eu
+
+pwd=$PWD
+PROJECT_DIR="$(cd "$(dirname "$0")"; pwd)"
+
+if [ -z "$PROJECT_NAME" ]; then
+    echo "PROJECT_NAME not set"
+    exit 1
+fi
+
+if [ "$#" -ne 1 ]; then
+    echo "usage: $0 [cmd name]"
+    exit 1
+fi
+
+name=$1
+
+function fail {
+    echo $1
+    exit 1
+}
+
+pushd ./cmd/$name
+
+    # Build
+    echo "building $name..."
+    docker build -t gcr.io/$PROJECT_NAME/$name . || fail "failed to build docker container"
+    echo "done building $name."
+
+    # Push
+    echo "pushing $name..."
+    docker push gcr.io/$PROJECT_NAME/$name || fail "failed to push docker container"
+    echo "done pushing $name."
+
+    # Apply
+    kubectl apply --filename=service.yaml
+
+popd
+
+SERVICE=$(\
+  kubectl get services.serving.knative.dev/$name \
+  --namespace=default \
+  --output=jsonpath="{.status.domain}")
+
+KNATIVE_INGRESS=$(\
+  kubectl get services/knative-ingressgateway \
+  --namespace=istio-system \
+  --output=jsonpath="{.status.loadBalancer.ingress[0].ip}")
+
+echo
+echo "to try out:"
+echo
+echo "curl --header \"Host: ${SERVICE}\" http://${KNATIVE_INGRESS}"

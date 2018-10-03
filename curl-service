@@ -1,0 +1,27 @@
+#! /bin/bash
+
+set -eu
+
+pwd=$PWD
+
+if [ "$#" -le 1 ]; then
+    echo "usage: $0 [cmd name]"
+    exit 1
+fi
+
+name=$1
+
+SERVICE=$(\
+  kubectl get services.serving.knative.dev/$name \
+  --namespace=default \
+  --output=jsonpath="{.status.domain}")
+
+KNATIVE_INGRESS=$(\
+  kubectl get services/knative-ingressgateway \
+  --namespace=istio-system \
+  --output=jsonpath="{.status.loadBalancer.ingress[0].ip}")
+
+# Include everything after the service name
+shift
+
+curl --header "Host: ${SERVICE}" http://${KNATIVE_INGRESS} $@
